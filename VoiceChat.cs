@@ -29,7 +29,9 @@ namespace VocieBot
         private DiscordGuild _kanela;
         private DiscordChannel _channel;
 
-        private static List<VoicePiece> _pieceList;
+        private List<VoicePiece> _pieceList;
+        private DateTime _startRecord;
+        private byte[] Zeros => Enumerable.Repeat((byte) 0, 1920).ToArray();
 
 
         public VoiceChat(DiscordClient discord, PieceManager pieceManager)
@@ -48,42 +50,10 @@ namespace VocieBot
         {
             _discord.MessageCreated -= _discord_MessageCreated;
             _connection.VoiceReceived -= VoiceReceiveHandler;
+
             if (e.Message.Content.ToLower().StartsWith("download"))
             {
-                var mentions = e.Message.MentionedUsers.ToList();
-
-                var userFilteredpieceLists = _pieceList.Where(piece => piece.User is not null)
-                    .GroupBy(x => x.User);
-                var streams = new List<UserStream>();
-                if (mentions.Count == 0)
-                {
-                    streams.Add(new UserStream()
-                    {
-                        Userame = "Everyone",
-                        Stream = await _pieceManager.WriteFile(_pieceList.ToList(), allUsers: true)
-                    });
-                }
-                else
-                {
-                    foreach (var userFilteredpieceList in userFilteredpieceLists.Where(list => e.MentionedUsers.ToList().Contains(list.Key)))
-                    {
-                        streams.Add(new UserStream()
-                        {
-                            Userame = userFilteredpieceList.Key.Username,
-                            Stream = await _pieceManager.WriteFile(userFilteredpieceList.ToList())
-                        });
-                    }
-                    streams.Add(new UserStream()
-                    {
-                        Userame = "Everyone",
-                        Stream = await _pieceManager.WriteFile(_pieceList.ToList(), allUsers: true)
-                    });
-                }
-
-
-
-
-
+                Task.Run(() => ProceedCommand(e));
 
                 //var msg = await new DiscordMessageBuilder()
                 //    .WithFiles(new Dictionary<string, Stream>() { { "nejakynormalnijmeno.wav", stream } })
@@ -91,7 +61,74 @@ namespace VocieBot
             }
             _discord.MessageCreated += _discord_MessageCreated;
             _connection.VoiceReceived += VoiceReceiveHandler;
+            _startRecord = DateTime.Now;
         }
+
+        private async Task ProceedCommand(DSharpPlus.EventArgs.MessageCreateEventArgs e)
+        {
+            var mentions = e.Message.MentionedUsers.ToList();
+            var userFilteredpieceLists = _pieceList.Where(piece => piece.User is not null)
+                .GroupBy(x => x.User);
+            var streams = new List<UserStream>();
+
+            foreach (var userFilteredpieceList in userFilteredpieceLists)
+            {
+                var startSilenceUserFilteredpieceList = userFilteredpieceList.ToList();
+                startSilenceUserFilteredpieceList.Insert(0, new VoicePiece(_startRecord, Zeros, userFilteredpieceList.Key, TimeSpan.FromMilliseconds(20)));
+                streams.Add(await GetStream(
+                    FillSilence(startSilenceUserFilteredpieceList), userFilteredpieceList.Key.Username));
+            }
+
+            if (mentions.Count == 0)
+            {
+                //var s = _pieceManager.GetMergedAudio(streams);
+            }
+            else
+            {
+
+                streams.Add(await GetStream(_pieceList, "Everyone"));
+            }
+        }
+        private async Task<UserStream> GetStream(List<VoicePiece> pieceList, string username)
+        {
+            var pieceManagerOutput = await _pieceManager.WriteFile(pieceList);
+            return new UserStream()
+            {
+                Userame = username,
+                Stream = pieceManagerOutput.Item1,
+                FileName = pieceManagerOutput.Item2
+            };
+        }
+
+        private List<VoicePiece> FillSilence(List<VoicePiece> pieceList)
+        {
+            var last = pieceList.Last();
+            for (var i = 0; i < pieceList.Count; i++)
+            {
+                var currentPiece = pieceList[i];
+
+                if (currentPiece.Time == last.Time)
+                {
+                    continue;
+                }
+                var nextPiece = pieceList[i + 1];
+                var nextTime = currentPiece.Time + currentPiece.Duration;
+                if (nextTime < nextPiece.Time)
+                {
+                    var nextDuration = (nextPiece.Time - currentPiece.Time - currentPiece.Duration);
+                    if (nextDuration > TimeSpan.FromSeconds(0.25))
+                    {
+                        var silencePiece = new VoicePiece(nextTime + TimeSpan.FromMilliseconds(1), Zeros, currentPiece.User, TimeSpan.FromMilliseconds(20));
+                        pieceList.Insert(i+1, silencePiece);
+                        
+                        i--;
+                    }
+                }
+            }
+
+            return pieceList;
+        }
+
 
         public async Task StartVoiceChatCheck()
         {
@@ -129,6 +166,8 @@ namespace VocieBot
                 }
 
                 _connection.VoiceReceived += VoiceReceiveHandler;
+                _startRecord = DateTime.Now;
+                Console.WriteLine($"[{DateTime.Now:yyyy-MM-dd-HH-mm-ss}]: Record");
             }
             else if (_channel.Users.Count == 1 && _connected)
             {
@@ -140,9 +179,7 @@ namespace VocieBot
 
         private async Task VoiceReceiveHandler(VoiceNextConnection connection, VoiceReceiveEventArgs args)
         {
-            _pieceList.Add(new VoicePiece(DateTime.Now, args.PcmData.ToArray(), args.User));
-            //Console.WriteLine($"[ {DateTime.Now} ] {args.User}: Time {args.AudioDuration}");
-
+            _pieceList.Add(new VoicePiece(DateTime.Now, args.PcmData.ToArray(), args.User, new TimeSpan(0, 0, 0, 0, args.AudioDuration)));
             _pieceList.RemoveAll(x => DateTime.Now.Subtract(x.Time) > TimeSpan.FromMinutes(30));
         }
     }

@@ -10,5 +10,6 @@ namespace VocieBot
     {
         public string Userame { get; set; }
         public MemoryStream Stream { get; set; }
+        public string FileName { get; set; }
     }
 }
