@@ -8,16 +8,22 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading.Tasks;
 using DSharpPlus.Entities;
-using FFmpeg.NET;
+using DSharpPlus.VoiceNext;
+using FFMpegCore;
+using FFMpegCore.Enums;
+using FFMpegCore.Pipes;
 
 namespace VocieBot
 {
     public class PieceManager
     {
-        public async Task<(MemoryStream, string)> WriteFile(List<VoicePiece> pieceList)
+        public async Task<(Stream, string)> WriteFile(List<VoicePiece> pieceList)
         {
             var fileName = $"{DateTime.Now:yyyy-MM-dd-HH-mm-ss}_{pieceList.First().User?.Username}";
-            //var arguments = $@"-f s16le -ar 48000 -thread_queue_size 1024 -i pipe:0 -ac 2 -map 0:a:0 -b:a 96k Output/{fileName}.mp3";
+            var rawOutputFormat = ".wav";
+            var convertedOutputFormat = ".mp3";
+            var rawPath = $"Output/{fileName}{rawOutputFormat}";
+            var convertedPath = $"Output/{fileName}{convertedOutputFormat}";
 
             List<byte> total = new List<byte>();
             foreach (var piece in pieceList)
@@ -25,89 +31,55 @@ namespace VocieBot
                 piece.Data.ForEach(x => total.Add((x)));
             }
 
-            //var stream = new MyStreamPipeSource(new MemoryStream(total.ToArray()));
-            //var stream = new StreamPipeSource(new MemoryStream(total.ToArray()));
-            var output = new MemoryStream();
+            WavConverter converter = new WavConverter();
+            var wav = converter.pcmToWav(total.ToArray(), 2, 48000, 16);
+            //await File.WriteAllBytesAsync(rawPath, wav);
 
-            var ff = new FFmpeg.NET.Engine();
-            var input = new StreamInput(new MemoryStream(total.ToArray()));
-            var convertOptions = new ConversionOptions()
-            {
+            await FFMpegArguments.FromPipeInput(new StreamPipeSource(new MemoryStream(wav)))
+                .OutputToFile(convertedPath, true,
+                    options => options
+                        .ForceFormat("mp3")
+                        .WithCustomArgument("-ar 48000 -ac 2 -map 0:a:0 -b:a 48k")
+                        .WithCustomArgument("-af asetrate=48000*0.5,aresample=48000"))
+                .NotifyOnOutput(OnOutput)
+                .NotifyOnError(OnOutput)
+                .ProcessAsynchronously();
 
-            };
-            //ff.ConvertAsync(input, )
-
-            output.Seek(0, SeekOrigin.Begin);
-
-            using (var fs = new FileStream($"Output/{fileName}.mp3", FileMode.OpenOrCreate))
-            {
-                output.CopyTo(fs);
-            }
-
-
-            //var ffmpeg = FFMpegArguments.FromPipeInput(new StreamPipeSource(stream))
-            //    .OutputToFile($"Output", true,
-            //        options => options
-            //            //.ForceFormat("pcm_s16le")
-            //            //.WithAudioCodec(AudioCodec.LibMp3Lame)
-            //            .WithAudioBitrate(AudioQuality.Low))
-            //            //.WithCustomArgument("map 0:a:0")
-            //            //.WithCustomArgument("b:a 96k"))
-            //            //.WithCustomArgument("-f s16le -ar 48000 -thread_queue_size 1024 -ac 2 -map 0:a:0 -b:a 96k"))
-            //    .NotifyOnOutput(OnOutput)
-            //    .NotifyOnError(OnOutput)
-            //    .ProcessSynchronously();
-
-            //var ffmpeg = Process.Start(new ProcessStartInfo
-            //{
-            //    FileName = "ffmpeg",
-            //    Arguments = arguments,
-
-            //    RedirectStandardInput = true
-            //});
-
-            //await ffmpeg.StandardInput.BaseStream.WriteAsync(total.ToArray());
-            //ffmpeg.WaitForExit();
-
-            return (null, fileName);
+            
+            await using var stream = File.OpenRead(convertedPath);
+            
+            return (stream, convertedPath);
         }
 
+        public UserStream MergePCM(List<UserStream> userStreams)
+        {
+
+            userStreams = userStreams.OrderByDescending(x =>
+            {
+                using var file = File.OpenRead(x.FilePath);
+                return file.Length;
+            }).ToList();
+            var ffmpeg = FFMpegArguments.FromFileInput(userStreams.First().FilePath);
+            foreach (var userStream in userStreams.Skip(1))
+            {
+                ffmpeg.AddFileInput(userStream.FilePath);
+            }
+
+            ffmpeg.OutputToFile($"Output/{DateTime.Now:yyyy-MM-dd-HH-mm-ss}_Everyone.mp3", true, options => options
+                    .ForceFormat("mp3")
+                    .WithAudioBitrate(AudioQuality.Low)
+                    .WithCustomArgument(
+                        $"-filter_complex amix=inputs={userStreams.Count}:duration=first:dropout_transition=3"))
+                .NotifyOnOutput(OnOutput)
+                .NotifyOnError(OnOutput)
+                .ProcessSynchronously();
+
+
+            return null;
+        }
         private void OnOutput(string obj)
         {
             Console.WriteLine(obj);
-        }
-
-        static void WriteToStream(Stream s, Byte[] bytes)
-        {
-            using (var writer = new BinaryWriter(s))
-            {
-                writer.Write(bytes);
-            }
-        }
-
-        public (MemoryStream, string) GetMergedAudio(List<UserStream> streams)
-        {
-            var inputs = string.Empty;
-
-            foreach (var userStream in streams)
-            {
-                inputs += inputs + $"-i Output/{userStream.FileName}.mp3 ";
-            }
-
-            var fileName = $"{DateTime.Now:yyyy-MM-dd-HH-mm-ss}_Everyone";
-            var arguments = $@"{inputs}-filter_complex amix=inputs={streams.Count}:duration=first:dropout_transition=3 {fileName}";
-
-            var ffmpeg = Process.Start(new ProcessStartInfo
-            {
-                FileName = "ffmpeg",
-                Arguments = arguments,
-
-                RedirectStandardInput = true
-            });
-
-            ffmpeg?.Start();
-
-            return (null, fileName);
         }
     }
 }

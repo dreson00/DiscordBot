@@ -10,7 +10,7 @@ static async Task MainAsync()
     {
         var discord = new DiscordClient(new DiscordConfiguration()
         {
-            Token = "MTAxMDkzMjk2MjI0NzgzNTY4OA.GP12E3.YLGEWsbN4lbClPrcmeqrCYsJHm2knktp9PhGQk",
+            Token = "MTAxMTk0MDg1NzQxNjUxNTU5NA.GRFZKB.vd24nqF7sTT39ApLYm6f2kN2_ZifYVy9mZRaIM",
             TokenType = TokenType.Bot
         });
 

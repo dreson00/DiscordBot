@@ -9,7 +9,7 @@ namespace VocieBot
     public class UserStream
     {
         public string Userame { get; set; }
-        public MemoryStream Stream { get; set; }
-        public string FileName { get; set; }
+        public Stream Stream { get; set; }
+        public string FilePath { get; set; }
     }
 }

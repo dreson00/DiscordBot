@@ -31,7 +31,8 @@ namespace VocieBot
 
         private List<VoicePiece> _pieceList;
         private DateTime _startRecord;
-        private byte[] Zeros => Enumerable.Repeat((byte) 0, 1920).ToArray();
+        private byte[] Zeros => Enumerable.Repeat((byte) 1, 1920).ToArray();
+        private const int RemoveAndUpdateTime = 1800;
 
 
         public VoiceChat(DiscordClient discord, PieceManager pieceManager)
@@ -61,7 +62,7 @@ namespace VocieBot
             }
             _discord.MessageCreated += _discord_MessageCreated;
             _connection.VoiceReceived += VoiceReceiveHandler;
-            _startRecord = DateTime.Now;
+            //_startRecord = DateTime.Now;
         }
 
         private async Task ProceedCommand(DSharpPlus.EventArgs.MessageCreateEventArgs e)
@@ -79,14 +80,15 @@ namespace VocieBot
                     FillSilence(startSilenceUserFilteredpieceList), userFilteredpieceList.Key.Username));
             }
 
+
+            UserStream everyoneStream;
             if (mentions.Count == 0)
             {
-                //var s = _pieceManager.GetMergedAudio(streams);
+                everyoneStream = _pieceManager.MergePCM(streams);
             }
             else
             {
-
-                streams.Add(await GetStream(_pieceList, "Everyone"));
+                everyoneStream = _pieceManager.MergePCM(streams.Where(stream => mentions.Exists(mention => stream.Userame == mention.Username)).ToList());
             }
         }
         private async Task<UserStream> GetStream(List<VoicePiece> pieceList, string username)
@@ -96,7 +98,7 @@ namespace VocieBot
             {
                 Userame = username,
                 Stream = pieceManagerOutput.Item1,
-                FileName = pieceManagerOutput.Item2
+                FilePath = pieceManagerOutput.Item2
             };
         }
 
@@ -116,7 +118,7 @@ namespace VocieBot
                 if (nextTime < nextPiece.Time)
                 {
                     var nextDuration = (nextPiece.Time - currentPiece.Time - currentPiece.Duration);
-                    if (nextDuration > TimeSpan.FromSeconds(0.25))
+                    if (nextDuration > TimeSpan.FromSeconds(0.03))
                     {
                         var silencePiece = new VoicePiece(nextTime + TimeSpan.FromMilliseconds(1), Zeros, currentPiece.User, TimeSpan.FromMilliseconds(20));
                         pieceList.Insert(i+1, silencePiece);
@@ -155,6 +157,8 @@ namespace VocieBot
 
         private async void OnTimedEvent(Object source, ElapsedEventArgs e)
         {
+            RemoveRedundantPiecesAndUpdateTime();
+
             if (_channel.Users.Count > 0 && !_connected)
             {
                 _connection = await _channel.ConnectAsync();
@@ -167,7 +171,7 @@ namespace VocieBot
 
                 _connection.VoiceReceived += VoiceReceiveHandler;
                 _startRecord = DateTime.Now;
-                Console.WriteLine($"[{DateTime.Now:yyyy-MM-dd-HH-mm-ss}]: Record");
+                Console.WriteLine($"[{_startRecord:yyyy-MM-dd-HH:mm:ss:ffff}]: Recording started");
             }
             else if (_channel.Users.Count == 1 && _connected)
             {
@@ -177,10 +181,24 @@ namespace VocieBot
             }
         }
 
-        private async Task VoiceReceiveHandler(VoiceNextConnection connection, VoiceReceiveEventArgs args)
+        private void RemoveRedundantPiecesAndUpdateTime()
+        {
+            if (_connected is false || _pieceList.FirstOrDefault() is null) //DEBIL??????  "tam dej return naco to budeš obalovat" A MĚNIT PODMÍNKU UŽ NEBUDEME???
+            {
+                return;
+            }
+            var first = DateTime.Now.Subtract(_pieceList.FirstOrDefault().Time);
+            if (first > TimeSpan.FromSeconds(RemoveAndUpdateTime))
+            {
+                _pieceList = _pieceList.Where(x => DateTime.Now.Subtract(x.Time) < TimeSpan.FromSeconds(RemoveAndUpdateTime)).ToList();
+                _startRecord = DateTime.Now;
+            }
+        }
+
+        private Task VoiceReceiveHandler(VoiceNextConnection connection, VoiceReceiveEventArgs args)
         {
             _pieceList.Add(new VoicePiece(DateTime.Now, args.PcmData.ToArray(), args.User, new TimeSpan(0, 0, 0, 0, args.AudioDuration)));
-            _pieceList.RemoveAll(x => DateTime.Now.Subtract(x.Time) > TimeSpan.FromMinutes(30));
+            return Task.CompletedTask;
         }
     }
 
