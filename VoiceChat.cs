@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using NAudio.Wave;
 using System.IO;
 using System.Net;
+using DSharpPlus.CommandsNext;
 using DSharpPlus.CommandsNext.Converters;
 
 namespace VocieBot
@@ -28,6 +29,7 @@ namespace VocieBot
         private readonly PieceManager _pieceManager;
         private DiscordGuild _kanela;
         private DiscordChannel _channel;
+        private CommandsNextExtension _commands;
 
         private List<VoicePiece> _pieceList;
         private DateTime _startRecord;
@@ -35,37 +37,37 @@ namespace VocieBot
         private const int RemoveAndUpdateTime = 1800;
 
 
-        public VoiceChat(DiscordClient discord, PieceManager pieceManager)
+        public VoiceChat(DiscordClient discord, PieceManager pieceManager, CommandsNextExtension commands)
         {
             _discord = discord;
             _pieceManager = pieceManager;
             _connected = false;
             _pieceList = new List<VoicePiece>();
+            _commands = commands;
 
-            _discord.MessageCreated += _discord_MessageCreated;
+            //_discord.MessageCreated += _discord_MessageCreated;
         }
 
 
-
-        private async Task _discord_MessageCreated(DiscordClient sender, DSharpPlus.EventArgs.MessageCreateEventArgs e)
+        private async Task CommandsOnCommandExecuted(CommandsNextExtension sender, CommandExecutionEventArgs e)
         {
-            _discord.MessageCreated -= _discord_MessageCreated;
-            _connection.VoiceReceived -= VoiceReceiveHandler;
-
-            if (e.Message.Content.ToLower().StartsWith("download"))
+            string rawArguments = String.Empty;
+            if (e.Command == _commands.FindCommand("download", out rawArguments))
             {
-                Task.Run(() => ProceedCommand(e));
+                _connection.VoiceReceived -= VoiceReceiveHandler;
+
+                await ProceedCommand(e.Context);
 
                 //var msg = await new DiscordMessageBuilder()
                 //    .WithFiles(new Dictionary<string, Stream>() { { "nejakynormalnijmeno.wav", stream } })
                 //    .SendAsync(e.Channel);
+
+                _connection.VoiceReceived += VoiceReceiveHandler;
+                _startRecord = DateTime.Now;
             }
-            _discord.MessageCreated += _discord_MessageCreated;
-            _connection.VoiceReceived += VoiceReceiveHandler;
-            //_startRecord = DateTime.Now;
         }
 
-        private async Task ProceedCommand(DSharpPlus.EventArgs.MessageCreateEventArgs e)
+        private async Task ProceedCommand(CommandContext e)
         {
             var mentions = e.Message.MentionedUsers.ToList();
             var userFilteredpieceLists = _pieceList.Where(piece => piece.User is not null)
@@ -136,6 +138,7 @@ namespace VocieBot
         {
             _kanela = await _discord.GetGuildAsync(288667412549730304);
             _channel = await _discord.GetChannelAsync(288683278435614720);
+            _commands.CommandExecuted += CommandsOnCommandExecuted;
 
             _discord.UseVoiceNext(new VoiceNextConfiguration()
             {
@@ -144,6 +147,8 @@ namespace VocieBot
 
             SetTimer();
         }
+
+
 
         private void SetTimer()
         {
