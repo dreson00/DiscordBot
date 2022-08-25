@@ -1,18 +1,19 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using DSharpPlus.CommandsNext;
+﻿using DSharpPlus.CommandsNext;
 using DSharpPlus.CommandsNext.Attributes;
 
-namespace VocieBot.Commands
+namespace VoiceBot.Commands
 {
     public class VoiceChatAudioCommandModule : BaseCommandModule
     {
+        public IVoiceChat VoiceChat {private get; set; }
+
         [Command("download")]
         public async Task DownloadAudioCommand(CommandContext ctx, params string[] names)
         {
+            if (VoiceChat == null)
+            {
+                return;
+            }
             var mentions = ctx.Message.MentionedUsers;
             if (mentions.Any())
             {
@@ -24,6 +25,7 @@ namespace VocieBot.Commands
             }
             await ctx.Message.DeleteAsync();
 
+            await VoiceChat.ExecuteDownloadCommand(ctx);
         }
     }
 }
