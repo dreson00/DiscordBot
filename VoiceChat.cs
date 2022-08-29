@@ -4,23 +4,31 @@ using DSharpPlus;
 using System.Timers;
 using DSharpPlus.VoiceNext.EventArgs;
 using DSharpPlus.CommandsNext;
+using System.Diagnostics;
+using System.IO;
+using DSharpPlus.EventArgs;
+using System.Threading;
+using Timer = System.Timers.Timer;
 
 namespace VoiceBot
 {
     public class VoiceChat : IVoiceChat
     {
         private bool _connected;
-        private System.Timers.Timer aTimer;
+        private System.Timers.Timer VoiceChatUserPresenceTimer;
         private VoiceNextConnection _connection;
 
         private DiscordClient _discord;
         private readonly IPieceManager _pieceManager;
         private DiscordGuild _kanela;
-        private DiscordChannel _channel;
+        private DiscordChannel _mainChannel;
+        private DiscordChannel _additionalChannel;
 
         private List<VoicePiece> _pieceList;
         private DateTime _startRecord;
-        private byte[] Zeros => Enumerable.Repeat((byte) 1, 1920).ToArray();
+        private DateTime _downloadTime;
+        private byte[] Zeros => Enumerable.Repeat((byte)0, 1920).ToArray();
+        private bool IsConnected => _discord.GetVoiceNext().GetConnection(_kanela) is not null;
         private const int RemoveAndUpdateTime = 1800;
 
 
@@ -30,7 +38,9 @@ namespace VoiceBot
             _pieceManager = pieceManager;
             _connected = false;
             _pieceList = new List<VoicePiece>();
+            var x = _discord.GetVoiceNext();
         }
+
 
 
         public async Task ExecuteDownloadCommand(CommandContext ctx)
@@ -45,6 +55,7 @@ namespace VoiceBot
 
                 _connection.VoiceReceived += VoiceReceiveHandler;
                 _startRecord = DateTime.Now;
+                _downloadTime = DateTime.Now;
         }
 
         private async Task ProceedCommand(CommandContext ctx)
@@ -58,6 +69,7 @@ namespace VoiceBot
             {
                 var startSilenceUserFilteredpieceList = userFilteredpieceList.ToList();
                 startSilenceUserFilteredpieceList.Insert(0, new VoicePiece(_startRecord, Zeros, userFilteredpieceList.Key, TimeSpan.FromMilliseconds(20)));
+                startSilenceUserFilteredpieceList.Add(new VoicePiece(_downloadTime, Zeros, userFilteredpieceList.Key, TimeSpan.FromMilliseconds(20)));
                 streams.Add(await GetStream(
                     FillSilence(startSilenceUserFilteredpieceList), userFilteredpieceList.Key.Username));
             }
@@ -100,7 +112,7 @@ namespace VoiceBot
                 if (nextTime < nextPiece.Time)
                 {
                     var nextDuration = (nextPiece.Time - currentPiece.Time - currentPiece.Duration);
-                    if (nextDuration > TimeSpan.FromSeconds(0.03))
+                    if (nextDuration > TimeSpan.FromSeconds(0.021))
                     {
                         var silencePiece = new VoicePiece(nextTime + TimeSpan.FromMilliseconds(1), Zeros, currentPiece.User, TimeSpan.FromMilliseconds(20));
                         pieceList.Insert(i+1, silencePiece);
@@ -117,7 +129,8 @@ namespace VoiceBot
         public async Task StartVoiceChatCheck()
         {
             _kanela = await _discord.GetGuildAsync(288667412549730304);
-            _channel = await _discord.GetChannelAsync(288683278435614720);
+            _mainChannel = await _discord.GetChannelAsync(288683278435614720);
+            _additionalChannel = await _discord.GetChannelAsync(585813017942425600);
 
             _discord.UseVoiceNext(new VoiceNextConfiguration()
             {
@@ -127,25 +140,121 @@ namespace VoiceBot
             SetTimer();
         }
 
+        public async Task ExecuteWakeCommand(CommandContext ctx, int repeat)
+        {
+            var membersToDeafen = _mainChannel.Users.ToList();
+            membersToDeafen.RemoveAll(x =>
+                ctx.Message.MentionedUsers.ToList().Exists(y => y.Username == x.Username && !y.IsBot));
+            await DeafenUsersSwitch(membersToDeafen, deaf: true);
+
+            var pcm = File.OpenRead("out");
+            pcm.Seek(0, SeekOrigin.Begin);
+            pcm.Position = 0;
+            var transmit = _connection.GetTransmitSink();
+            await Task.WhenAll(Enumerable.Range(0, repeat)
+                .Select(async _ =>
+                    await TransmitAudio(pcm, transmit)
+                        .ContinueWith(async _ =>
+                        await Task.Delay(TimeSpan.FromMilliseconds(20)))));
+            transmit = null;
+            transmit?.Dispose();
+            pcm.Close();
+            await pcm.DisposeAsync();
+
+            await DeafenUsersSwitch(membersToDeafen, deaf: false);
+        }
+
+        private async Task TransmitAudio(FileStream pcm, VoiceTransmitSink transmit)
+        {
+            await pcm.CopyToAsync(transmit);
+            pcm.Position = 0;
+        }
+
+        //private Stream ConvertToPCM(string path)
+        //{
+        //    var ffmpeg = Process.Start(new ProcessStartInfo
+        //    {
+        //        FileName = "ffmpeg",
+        //        Arguments = $@"-i ""{path}"" -ac 2 -f s16le -ar 48000 pipe:1",
+        //        RedirectStandardOutput = true,
+        //        UseShellExecute = false
+        //    });
+
+        //    return ffmpeg.StandardOutput.BaseStream;
+        //}
+
+        private async Task DeafenUsersSwitch(List<DiscordMember> members, bool deaf)
+        {
+            foreach (var discordMember in members)
+            {
+                await discordMember.SetDeafAsync(deaf);
+            }
+        }
+
+        public async Task ExecuteIrritateCommand(CommandContext ctx, int repeat)
+        {
+            var member =
+                _mainChannel.Users.Single(user => user.Username == ctx.Message.MentionedUsers.First().Username);
+            if (member is not null)
+            {
+                await Task.WhenAll(Enumerable.Range(0, repeat * 2)
+                    .Select(async _ =>
+                        await TransportMember(member)
+                            .ContinueWith(async _ =>
+                                await Task.Delay(TimeSpan.FromMilliseconds(5000)))));
+            }
+        }
+
+        private async Task TransportMember(DiscordMember member)
+        {
+            //await Task.Delay(TimeSpan.FromMilliseconds(5000));
+            if (_mainChannel.Users.Contains(member))
+            {
+                await member.PlaceInAsync(_additionalChannel);
+            }
+
+            if (_additionalChannel.Users.Contains(member))
+            {
+                await member.PlaceInAsync(_mainChannel);
+            }
+        }
 
 
         private void SetTimer()
         {
-            // Create a timer with a two second interval.
-            aTimer = new System.Timers.Timer(1000);
-            // Hook up the Elapsed event for the timer. 
-            aTimer.Elapsed += OnTimedEvent;
-            aTimer.AutoReset = true;
-            aTimer.Enabled = true;
+            VoiceChatUserPresenceTimer = new System.Timers.Timer(1000);
+            VoiceChatUserPresenceTimer.Elapsed += OnVoiceChatUserPresenceTimer;
+            VoiceChatUserPresenceTimer.AutoReset = true;
+            VoiceChatUserPresenceTimer.Enabled = true;
+
+            VoiceChatBotPresenceTimer = new System.Timers.Timer(100);
+            VoiceChatBotPresenceTimer.Elapsed += VoiceChatBotPresenceTimerOnElapsed;
+            VoiceChatBotPresenceTimer.AutoReset = true;
+            VoiceChatBotPresenceTimer.Enabled = true;
         }
 
-        private async void OnTimedEvent(Object source, ElapsedEventArgs e)
+        private void VoiceChatBotPresenceTimerOnElapsed(object? sender, ElapsedEventArgs e)
+        {
+            if (IsConnected is false)
+            {
+                _connected = false;
+
+                if (_connection is not null)
+                {
+                    _connection.VoiceReceived -= VoiceReceiveHandler;
+                }
+            }
+        }
+
+        public Timer VoiceChatBotPresenceTimer { get; set; }
+
+        private async void OnVoiceChatUserPresenceTimer(Object source, ElapsedEventArgs e)
         {
             RemoveRedundantPiecesAndUpdateTime();
 
-            if (_channel.Users.Count > 0 && !_connected)
+            if (_mainChannel.Users.Count > 0 && _connected is false)
             {
-                _connection = await _channel.ConnectAsync();
+                _connection = await _mainChannel.ConnectAsync();
                 _connected = true;
 
                 if (!Directory.Exists("Output"))
@@ -157,7 +266,7 @@ namespace VoiceBot
                 _startRecord = DateTime.Now;
                 Console.WriteLine($"[{_startRecord:yyyy-MM-dd-HH:mm:ss:ffff}]: Recording started");
             }
-            else if (_channel.Users.Count == 1 && _connected)
+            else if (_mainChannel.Users.Count == 1 && _connected)
             {
                 _connection.VoiceReceived -= VoiceReceiveHandler;
                 _connection.Disconnect();
