@@ -58,7 +58,8 @@ namespace VoiceBot
                     .ForceFormat("mp3")
                     .WithAudioBitrate(AudioQuality.Low)
                     .WithCustomArgument(
-                        $"-filter_complex amix=inputs={userStreams.Count}:duration=first:dropout_transition=3"))
+                    //$"-filter_complex amix=inputs={userStreams.Count}:duration=first:dropout_transition=0"))
+                    $"-filter_complex amix=inputs={userStreams.Count}:duration=first"))
                 .NotifyOnOutput(OnOutput)
                 .NotifyOnError(OnOutput)
                 .ProcessSynchronously();

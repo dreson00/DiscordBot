@@ -76,6 +76,6 @@ namespace VoiceBot.Commands
             await ctx.Message.DeleteAsync();
         }
         [Command("irritate")]
-        public async Task IrritateCommand(CommandContext ctx, params string[] _) => await IrritateCommand(ctx, 5, _);
+        public async Task IrritateCommand(CommandContext ctx, params string[] _) => await IrritateCommand(ctx, 2, _);
     }
 }

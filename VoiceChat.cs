@@ -112,7 +112,7 @@ namespace VoiceBot
                 if (nextTime < nextPiece.Time)
                 {
                     var nextDuration = (nextPiece.Time - currentPiece.Time - currentPiece.Duration);
-                    if (nextDuration > TimeSpan.FromSeconds(0.021))
+                    if (nextDuration > TimeSpan.FromMilliseconds(21))
                     {
                         var silencePiece = new VoicePiece(nextTime + TimeSpan.FromMilliseconds(1), Zeros, currentPiece.User, TimeSpan.FromMilliseconds(20));
                         pieceList.Insert(i+1, silencePiece);
@@ -197,26 +197,32 @@ namespace VoiceBot
                 _mainChannel.Users.Single(user => user.Username == ctx.Message.MentionedUsers.First().Username);
             if (member is not null)
             {
-                await Task.WhenAll(Enumerable.Range(0, repeat * 2)
-                    .Select(async _ =>
-                        await TransportMember(member)
-                            .ContinueWith(async _ =>
-                                await Task.Delay(TimeSpan.FromMilliseconds(5000)))));
+                //await Task.WhenAll(Enumerable.Range(0, repeat * 2)
+                //    .Select(async _ =>
+                //        await TransportMember(member)
+                //            .ContinueWith(async _ =>
+                //                await Task.Delay(TimeSpan.FromSeconds(10)))));
+
+                for (int i = 0; i < repeat * 2; i++)
+                {
+                    await TransportMember(member);
+                    await Task.Delay(TimeSpan.FromSeconds(2));
+                }
             }
         }
 
         private async Task TransportMember(DiscordMember member)
         {
-            //await Task.Delay(TimeSpan.FromMilliseconds(5000));
-            if (_mainChannel.Users.Contains(member))
-            {
-                await member.PlaceInAsync(_additionalChannel);
-            }
-
+            //await Task.Delay(TimeSpan.FromMilliseconds(10000));
             if (_additionalChannel.Users.Contains(member))
             {
                 await member.PlaceInAsync(_mainChannel);
             }
+            else if (_mainChannel.Users.Contains(member))
+            {
+                await member.PlaceInAsync(_additionalChannel);
+            }
+
         }
 
 
