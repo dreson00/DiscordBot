@@ -27,9 +27,10 @@ namespace VoiceBot
         private List<VoicePiece> _pieceList;
         private DateTime _startRecord;
         private DateTime _downloadTime;
+        private int _packetDuration;
         private byte[] Zeros => Enumerable.Repeat((byte)0, 1920).ToArray();
         private bool IsConnected => _discord.GetVoiceNext().GetConnection(_kanela) is not null;
-        private const int RemoveAndUpdateTime = 1800;
+        private const int RemoveAndUpdateTime = 15;
 
 
         public VoiceChat(DiscordClient discord, IPieceManager pieceManager)
@@ -38,6 +39,7 @@ namespace VoiceBot
             _pieceManager = pieceManager;
             _connected = false;
             _pieceList = new List<VoicePiece>();
+            _packetDuration = 500;
             var x = _discord.GetVoiceNext();
         }
 
@@ -47,7 +49,7 @@ namespace VoiceBot
         {
             _connection.VoiceReceived -= VoiceReceiveHandler;
 
-                await ProceedCommand(ctx);
+                await ProceedDownloadCommand(ctx);
 
                 //var msg = await new DiscordMessageBuilder()
                 //    .WithFiles(new Dictionary<string, Stream>() { { "nejakynormalnijmeno.wav", stream } })
@@ -58,7 +60,7 @@ namespace VoiceBot
                 _downloadTime = DateTime.Now;
         }
 
-        private async Task ProceedCommand(CommandContext ctx)
+        private async Task ProceedDownloadCommand(CommandContext ctx)
         {
             var mentions = ctx.Message.MentionedUsers.ToList();
             var userFilteredpieceLists = _pieceList.Where(piece => piece.User is not null)
@@ -68,8 +70,8 @@ namespace VoiceBot
             foreach (var userFilteredpieceList in userFilteredpieceLists)
             {
                 var startSilenceUserFilteredpieceList = userFilteredpieceList.ToList();
-                startSilenceUserFilteredpieceList.Insert(0, new VoicePiece(_startRecord, Zeros, userFilteredpieceList.Key, TimeSpan.FromMilliseconds(20)));
-                startSilenceUserFilteredpieceList.Add(new VoicePiece(_downloadTime, Zeros, userFilteredpieceList.Key, TimeSpan.FromMilliseconds(20)));
+                startSilenceUserFilteredpieceList.Insert(0, new VoicePiece(_startRecord, Zeros, userFilteredpieceList.Key, TimeSpan.FromMilliseconds(_packetDuration)));
+                startSilenceUserFilteredpieceList.Add(new VoicePiece(_downloadTime, Zeros, userFilteredpieceList.Key, TimeSpan.FromMilliseconds(_packetDuration)));
                 streams.Add(await GetStream(
                     FillSilence(startSilenceUserFilteredpieceList), userFilteredpieceList.Key.Username));
             }
@@ -112,9 +114,9 @@ namespace VoiceBot
                 if (nextTime < nextPiece.Time)
                 {
                     var nextDuration = (nextPiece.Time - currentPiece.Time - currentPiece.Duration);
-                    if (nextDuration > TimeSpan.FromMilliseconds(21))
+                    if (nextDuration > TimeSpan.FromMilliseconds(_packetDuration + 1))
                     {
-                        var silencePiece = new VoicePiece(nextTime + TimeSpan.FromMilliseconds(1), Zeros, currentPiece.User, TimeSpan.FromMilliseconds(20));
+                        var silencePiece = new VoicePiece(nextTime + TimeSpan.FromMilliseconds(1), Zeros, currentPiece.User, TimeSpan.FromMilliseconds(_packetDuration));
                         pieceList.Insert(i+1, silencePiece);
                         
                         i--;
@@ -197,12 +199,6 @@ namespace VoiceBot
                 _mainChannel.Users.Single(user => user.Username == ctx.Message.MentionedUsers.First().Username);
             if (member is not null)
             {
-                //await Task.WhenAll(Enumerable.Range(0, repeat * 2)
-                //    .Select(async _ =>
-                //        await TransportMember(member)
-                //            .ContinueWith(async _ =>
-                //                await Task.Delay(TimeSpan.FromSeconds(10)))));
-
                 for (int i = 0; i < repeat * 2; i++)
                 {
                     await TransportMember(member);
@@ -213,7 +209,6 @@ namespace VoiceBot
 
         private async Task TransportMember(DiscordMember member)
         {
-            //await Task.Delay(TimeSpan.FromMilliseconds(10000));
             if (_additionalChannel.Users.Contains(member))
             {
                 await member.PlaceInAsync(_mainChannel);
@@ -222,7 +217,6 @@ namespace VoiceBot
             {
                 await member.PlaceInAsync(_additionalChannel);
             }
-
         }
 
 
@@ -282,14 +276,14 @@ namespace VoiceBot
 
         private void RemoveRedundantPiecesAndUpdateTime()
         {
-            if (_connected is false || _pieceList.FirstOrDefault() is null) //DEBIL??????  "tam dej return naco to budeš obalovat" A MĚNIT PODMÍNKU UŽ NEBUDEME???
+            if (_connected is false || _pieceList.FirstOrDefault() is null)
             {
                 return;
             }
             var first = DateTime.Now.Subtract(_pieceList.FirstOrDefault().Time);
             if (first > TimeSpan.FromSeconds(RemoveAndUpdateTime))
             {
-                _pieceList = _pieceList.Where(x => DateTime.Now.Subtract(x.Time) < TimeSpan.FromSeconds(RemoveAndUpdateTime)).ToList();
+                _pieceList = _pieceList.Where(x => DateTime.Now.Subtract(x.Time) < TimeSpan.FromMinutes(RemoveAndUpdateTime)).ToList();
                 _startRecord = DateTime.Now;
             }
         }
