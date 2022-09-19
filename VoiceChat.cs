@@ -32,19 +32,27 @@ namespace VoiceBot
         private bool IsConnected => _discord.GetVoiceNext().GetConnection(_kanela) is not null;
         private const int RemoveAndUpdateTime = 15;
 
+        public Timer VoiceChatBotPresenceTimer { get; set; }
 
+        /// <summary>Initializes a new instance of the <see cref="VoiceChat" /> class.</summary>
+        /// <param name="discord">The discord.</param>
+        /// <param name="pieceManager">The piece manager.</param>
         public VoiceChat(DiscordClient discord, IPieceManager pieceManager)
         {
             _discord = discord;
             _pieceManager = pieceManager;
             _connected = false;
             _pieceList = new List<VoicePiece>();
-            _packetDuration = 500;
-            var x = _discord.GetVoiceNext();
+            _packetDuration = 20;
+            //var x = _discord.GetVoiceNext();
         }
 
 
 
+        /// <summary>
+        /// Executes the download command.
+        /// </summary>
+        /// <param name="ctx">The CTX.</param>
         public async Task ExecuteDownloadCommand(CommandContext ctx)
         {
             _connection.VoiceReceived -= VoiceReceiveHandler;
@@ -128,6 +136,9 @@ namespace VoiceBot
         }
 
 
+        /// <summary>
+        /// Starts the voice chat check.
+        /// </summary>
         public async Task StartVoiceChatCheck()
         {
             _kanela = await _discord.GetGuildAsync(288667412549730304);
@@ -142,6 +153,12 @@ namespace VoiceBot
             SetTimer();
         }
 
+
+        /// <summary>
+        /// Executes the wake command.
+        /// </summary>
+        /// <param name="ctx">The CTX.</param>
+        /// <param name="repeat">The repeat.</param>
         public async Task ExecuteWakeCommand(CommandContext ctx, int repeat)
         {
             var membersToDeafen = _mainChannel.Users.ToList();
@@ -165,6 +182,7 @@ namespace VoiceBot
 
             await DeafenUsersSwitch(membersToDeafen, deaf: false);
         }
+
 
         private async Task TransmitAudio(FileStream pcm, VoiceTransmitSink transmit)
         {
@@ -193,6 +211,12 @@ namespace VoiceBot
             }
         }
 
+
+        /// <summary>
+        /// Executes the irritate command.
+        /// </summary>
+        /// <param name="ctx">The CTX.</param>
+        /// <param name="repeat">The repeat.</param>
         public async Task ExecuteIrritateCommand(CommandContext ctx, int repeat)
         {
             var member =
@@ -246,7 +270,7 @@ namespace VoiceBot
             }
         }
 
-        public Timer VoiceChatBotPresenceTimer { get; set; }
+        
 
         private async void OnVoiceChatUserPresenceTimer(Object source, ElapsedEventArgs e)
         {

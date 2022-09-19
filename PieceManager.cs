@@ -6,6 +6,12 @@ namespace VoiceBot
 {
     public class PieceManager : IPieceManager
     {
+
+        /// <summary>
+        /// Writes the file.
+        /// </summary>
+        /// <param name="pieceList">The piece list.</param>
+        /// <returns></returns>
         public async Task<(Stream, string)> WriteFile(List<VoicePiece> pieceList)
         {
             var fileName = $"{DateTime.Now:yyyy-MM-dd-HH-mm-ss}_{pieceList.First().User?.Username}";
@@ -21,7 +27,7 @@ namespace VoiceBot
             }
 
             WavConverter converter = new WavConverter();
-            var wav = converter.pcmToWav(total.ToArray(), 2, 48000, 16);
+            var wav = converter.PcmToWav(total.ToArray(), 2, 48000, 16);
             //await File.WriteAllBytesAsync(rawPath, wav);
 
             await FFMpegArguments.FromPipeInput(new StreamPipeSource(new MemoryStream(wav)))
@@ -40,6 +46,12 @@ namespace VoiceBot
             return (stream, convertedPath);
         }
 
+
+        /// <summary>
+        /// Merges the PCM.
+        /// </summary>
+        /// <param name="userStreams">The user streams.</param>
+        /// <returns></returns>
         public UserStream MergePCM(List<UserStream> userStreams)
         {
 

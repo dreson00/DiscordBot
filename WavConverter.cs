@@ -2,28 +2,33 @@
 {
     public class WavConverter
     {
-        public WavConverter()
-        {
 
-        }
-
-        public byte[] pcmToWav(byte[] pcmData, int numChannels, int sampleRate, int bitPerSample)
+        /// <summary>
+        /// PCMs to wav.
+        /// </summary>
+        /// <param name="pcmData">The PCM data.</param>
+        /// <param name="numChannels">The number channels.</param>
+        /// <param name="sampleRate">The sample rate.</param>
+        /// <param name="bitPerSample">The bit per sample.</param>
+        /// <returns></returns>
+        public byte[] PcmToWav(byte[] pcmData, int numChannels, int sampleRate, int bitPerSample)
         {
             byte[] wavData = new byte[pcmData.Length + 44];
-            byte[] header = wavHeader(pcmData.Length, numChannels, sampleRate, bitPerSample);
+            byte[] header = WavHeader(pcmData.Length, numChannels, sampleRate, bitPerSample);
             header.CopyTo(wavData, 0);
             pcmData.CopyTo(wavData, header.Length);
             return wavData;
         }
 
-        /**
-         * @param pcmLen pcm
-         * @param numChannels, mono = 1, stereo = 2
-         * @param sampleRate
-         * @param bitPerSample, 8bits
-         * @return wav
-         */
-        public byte[] wavHeader(int pcmLen, int numChannels, int sampleRate, int bitPerSample)
+        /// <summary>
+        /// Wavs the header.
+        /// </summary>
+        /// <param name="pcmLen">Length of the PCM.</param>
+        /// <param name="numChannels">The number channels.</param>
+        /// <param name="sampleRate">The sample rate.</param>
+        /// <param name="bitPerSample">The bit per sample.</param>
+        /// <returns></returns>
+        public byte[] WavHeader(int pcmLen, int numChannels, int sampleRate, int bitPerSample)
         {
             byte[] header = new byte[44];
             // ChunkID, RIFF, 4bytes
