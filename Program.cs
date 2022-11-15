@@ -13,7 +13,7 @@ static async Task MainAsync()
     {
         var discordConfiguration = new DiscordConfiguration()
         {
-            Token = "MTAxMTk0MDg1NzQxNjUxNTU5NA.GRFZKB.vd24nqF7sTT39ApLYm6f2kN2_ZifYVy9mZRaIM",
+            Token = "",
             TokenType = TokenType.Bot
         };
 
