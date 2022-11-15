@@ -1,6 +1,6 @@
 ﻿using DSharpPlus.CommandsNext;
 
-namespace VoiceBot;
+namespace DiscordBot;
 
 public interface IVoiceChat
 {

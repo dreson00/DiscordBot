@@ -1,4 +1,4 @@
-﻿namespace VoiceBot
+﻿namespace DiscordBot
 {
     public class UserStream
     {

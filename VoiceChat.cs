@@ -10,7 +10,7 @@ using DSharpPlus.EventArgs;
 using System.Threading;
 using Timer = System.Timers.Timer;
 
-namespace VoiceBot
+namespace DiscordBot
 {
     public class VoiceChat : IVoiceChat
     {

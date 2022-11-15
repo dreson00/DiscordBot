@@ -2,7 +2,7 @@
 using DSharpPlus.CommandsNext;
 using DSharpPlus.CommandsNext.Attributes;
 
-namespace VoiceBot.Commands
+namespace DiscordBot.Commands
 {
     public class VoiceChatAudioCommandModule : BaseCommandModule
     {

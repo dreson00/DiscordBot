@@ -2,7 +2,7 @@
 using FFMpegCore.Enums;
 using FFMpegCore.Pipes;
 
-namespace VoiceBot
+namespace DiscordBot
 {
     public class PieceManager : IPieceManager
     {
