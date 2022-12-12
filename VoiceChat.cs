@@ -6,6 +6,7 @@ using DSharpPlus.VoiceNext.EventArgs;
 using DSharpPlus.CommandsNext;
 using System.Diagnostics;
 using System.IO;
+using System.Security.Cryptography;
 using DSharpPlus.EventArgs;
 using System.Threading;
 using Timer = System.Timers.Timer;
@@ -57,6 +58,7 @@ namespace DiscordBot
         {
             _connection.VoiceReceived -= VoiceReceiveHandler;
 
+                _downloadTime = DateTime.Now;  
                 await ProceedDownloadCommand(ctx);
 
                 //var msg = await new DiscordMessageBuilder()
@@ -65,12 +67,11 @@ namespace DiscordBot
 
                 _connection.VoiceReceived += VoiceReceiveHandler;
                 _startRecord = DateTime.Now;
-                _downloadTime = DateTime.Now;
+                
         }
 
         private async Task ProceedDownloadCommand(CommandContext ctx)
         {
-            var mentions = ctx.Message.MentionedUsers.ToList();
             var userFilteredpieceLists = _pieceList.Where(piece => piece.User is not null)
                 .GroupBy(x => x.User);
             var streams = new List<UserStream>();
@@ -83,17 +84,10 @@ namespace DiscordBot
                 streams.Add(await GetStream(
                     FillSilence(startSilenceUserFilteredpieceList), userFilteredpieceList.Key.Username));
             }
-
-
+            
             UserStream everyoneStream;
-            if (mentions.Count == 0)
-            {
-                everyoneStream = _pieceManager.MergePCM(streams);
-            }
-            else
-            {
-                everyoneStream = _pieceManager.MergePCM(streams.Where(stream => mentions.Exists(mention => stream.Userame == mention.Username)).ToList());
-            }
+            everyoneStream = _pieceManager.MergePCM(streams);
+
         }
         private async Task<UserStream> GetStream(List<VoicePiece> pieceList, string username)
         {
@@ -108,31 +102,24 @@ namespace DiscordBot
 
         private List<VoicePiece> FillSilence(List<VoicePiece> pieceList)
         {
-            var last = pieceList.Last();
-            for (var i = 0; i < pieceList.Count; i++)
-            {
-                var currentPiece = pieceList[i];
+            var silenceDuration = TimeSpan.FromMilliseconds(_packetDuration);
 
-                if (currentPiece.Time == last.Time)
+            return pieceList
+                .SelectMany(currentPiece =>
                 {
-                    continue;
-                }
-                var nextPiece = pieceList[i + 1];
-                var nextTime = currentPiece.Time + currentPiece.Duration;
-                if (nextTime < nextPiece.Time)
-                {
-                    var nextDuration = (nextPiece.Time - currentPiece.Time - currentPiece.Duration);
-                    if (nextDuration > TimeSpan.FromMilliseconds(_packetDuration + 1))
-                    {
-                        var silencePiece = new VoicePiece(nextTime + TimeSpan.FromMilliseconds(1), Zeros, currentPiece.User, TimeSpan.FromMilliseconds(_packetDuration));
-                        pieceList.Insert(i+1, silencePiece);
-                        
-                        i--;
-                    }
-                }
-            }
-
-            return pieceList;
+                    var nextPiece = pieceList.ElementAtOrDefault(pieceList.IndexOf(currentPiece) + 1);
+                    var gapDuration = (nextPiece?.Time - (currentPiece.Time + currentPiece.Duration)) ?? TimeSpan.Zero;
+                    return gapDuration <= TimeSpan.FromMilliseconds(10)
+                        ? new[] { currentPiece }
+                        : new[] { currentPiece }.Concat(
+                            Enumerable.Range(0, (int)Math.Ceiling(gapDuration.TotalMilliseconds / silenceDuration.TotalMilliseconds))
+                                .Select(j => new VoicePiece(
+                                    currentPiece.Time + currentPiece.Duration + silenceDuration * j,
+                                    Zeros,
+                                    currentPiece.User,
+                                    silenceDuration)));
+                })
+                .ToList();
         }
 
 
